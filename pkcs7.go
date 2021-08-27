@@ -12,6 +12,8 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"log"
+	"reflect"
 	"sort"
 
 	_ "crypto/sha1" // for crypto.SHA1
@@ -49,6 +51,9 @@ var (
 	OIDAttributeSigningTime   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 5}
 
 	// Digest Algorithms
+
+	OIDDigestAlgorithmMD5 = asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 5}
+
 	OIDDigestAlgorithmSHA1   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
 	OIDDigestAlgorithmSHA256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 	OIDDigestAlgorithmSHA384 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
@@ -94,6 +99,8 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
 		return crypto.SHA384, nil
 	case oid.Equal(OIDDigestAlgorithmSHA512), oid.Equal(OIDDigestAlgorithmECDSASHA512):
 		return crypto.SHA512, nil
+	case oid.Equal(OIDDigestAlgorithmMD5):
+		return crypto.MD5, nil
 	}
 	return crypto.Hash(0), ErrUnsupportedAlgorithm
 }
@@ -117,32 +124,38 @@ func getDigestOIDForSignatureAlgorithm(digestAlg x509.SignatureAlgorithm) (asn1.
 // getOIDForEncryptionAlgorithm takes the private key type of the signer and
 // the OID of a digest algorithm to return the appropriate signerInfo.DigestEncryptionAlgorithm
 func getOIDForEncryptionAlgorithm(pkey crypto.PrivateKey, OIDDigestAlg asn1.ObjectIdentifier) (asn1.ObjectIdentifier, error) {
-	switch pkey.(type) {
-	case *rsa.PrivateKey:
-		switch {
-		default:
-			return OIDEncryptionAlgorithmRSA, nil
-		case OIDDigestAlg.Equal(OIDEncryptionAlgorithmRSA):
-			return OIDEncryptionAlgorithmRSA, nil
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA1):
-			return OIDEncryptionAlgorithmRSASHA1, nil
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA256):
-			return OIDEncryptionAlgorithmRSASHA256, nil
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA384):
-			return OIDEncryptionAlgorithmRSASHA384, nil
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA512):
-			return OIDEncryptionAlgorithmRSASHA512, nil
-		}
-	case *ecdsa.PrivateKey:
-		switch {
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA1):
-			return OIDDigestAlgorithmECDSASHA1, nil
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA256):
-			return OIDDigestAlgorithmECDSASHA256, nil
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA384):
-			return OIDDigestAlgorithmECDSASHA384, nil
-		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA512):
-			return OIDDigestAlgorithmECDSASHA512, nil
+	log.Println("########################## Local PKCS7 DEV Branch ################################")
+	log.Println(reflect.TypeOf(pkey)) //By me
+
+	switch key := pkey.(type) {
+	case crypto.Signer:
+		switch key.Public().(type) {
+		case *rsa.PublicKey, rsa.PublicKey:
+			switch {
+			default:
+				return OIDEncryptionAlgorithmRSA, nil
+			case OIDDigestAlg.Equal(OIDEncryptionAlgorithmRSA):
+				return OIDEncryptionAlgorithmRSA, nil
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA1):
+				return OIDEncryptionAlgorithmRSASHA1, nil
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA256):
+				return OIDEncryptionAlgorithmRSASHA256, nil
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA384):
+				return OIDEncryptionAlgorithmRSASHA384, nil
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA512):
+				return OIDEncryptionAlgorithmRSASHA512, nil
+			}
+		case *ecdsa.PublicKey, ecdsa.PublicKey:
+			switch {
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA1):
+				return OIDDigestAlgorithmECDSASHA1, nil
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA256):
+				return OIDDigestAlgorithmECDSASHA256, nil
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA384):
+				return OIDDigestAlgorithmECDSASHA384, nil
+			case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA512):
+				return OIDDigestAlgorithmECDSASHA512, nil
+			}
 		}
 	case *dsa.PrivateKey:
 		return OIDDigestAlgorithmDSA, nil
@@ -159,6 +172,7 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 	var info contentInfo
 	der, err := ber2der(data)
 	if err != nil {
+		log.Println("ber2der Error")
 		return nil, err
 	}
 	rest, err := asn1.Unmarshal(der, &info)
@@ -167,6 +181,7 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 		return
 	}
 	if err != nil {
+		log.Println("unmarshal Error")
 		return
 	}
 
