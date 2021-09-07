@@ -20,10 +20,31 @@ func (s asn1Structured) EncodeTo(out *bytes.Buffer) error {
 	//fmt.Printf("%s--> tag: % X\n", strings.Repeat("| ", encodeIndent), s.tagBytes)
 	encodeIndent++
 	inner := new(bytes.Buffer)
-	for _, obj := range s.content {
-		err := obj.EncodeTo(inner)
+	/*
+		//Concatenate entire OCTET STRING before encoding
+		//Seems to be related to https://stackoverflow.com/a/58657515/16656218
+		//Short story: Constructed indefinite length is not supported in DER
+	*/
+	if s.tagBytes[0] == 36 { //CONSTRUCTED OCTET STRING
+		asn1p := asn1Primitive{
+			tagBytes: []byte{04},
+		}
+		octetContent := new(bytes.Buffer)
+		for _, obj := range s.content {
+			octetContent.Write(obj.(asn1Primitive).content)
+		}
+		asn1p.content = (*octetContent).Bytes()
+		asn1p.length = len(asn1p.content)
+		err := asn1p.EncodeTo(inner)
 		if err != nil {
 			return err
+		}
+	} else {
+		for _, obj := range s.content {
+			err := obj.EncodeTo(inner)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	encodeIndent--
